@@ -5,12 +5,14 @@ from image_processing import process_images_task
 from model import create_request_record, delete_all_records, get_request_status
 import uuid
 import csv
+import asyncio
 
 
 # app = Flask(__name__)
 app = Quart(__name__)
 
 
+# Upload API to accept the CSV file
 @app.route("/upload", methods=["POST"])
 async def upload():
     # Get the form data and files asynchronously
@@ -23,18 +25,21 @@ async def upload():
     if not file.filename.endswith(".csv"):
         return jsonify({"error": "Invalid file type"}), 400
 
+    # Parse CSV and validate format (assuming parse_csv is your custom function)
     rows, error = parse_csv(file)
     if error:
         return jsonify({"error": error}), 400
 
+    # Generate a unique request ID
     request_id = str(uuid.uuid4())
 
-    # Store request record in MongoDB
+    # Create a new request record in MongoDB with 'Pending' status
     create_request_record(request_id, rows)
 
-    # Trigger async image processing
-    await process_images_task(request_id, rows)
+    # Trigger async image processing in the background using asyncio.create_task
+    asyncio.create_task(process_images_task(request_id, rows))  # Run asynchronously
 
+    # Immediately return the request ID without waiting for processing
     return jsonify({"request_id": request_id}), 200
 
 

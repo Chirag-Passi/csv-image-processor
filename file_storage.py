@@ -20,7 +20,7 @@ AWS_SECRET_ACCESS_KEY = os.getenv("ENV_AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.getenv("ENV_AWS_REGION")
 
 
-
+# Download the image asynchronously
 async def download_image(image_url):
     """Asynchronously download an image from a URL."""
     async with aiohttp.ClientSession() as session:
@@ -30,8 +30,19 @@ async def download_image(image_url):
             return io.BytesIO(await response.read())  # Return image content as bytes
 
 
+import asyncio
+
+
+# Compress the image asynchronously
 async def compress_image(image, compression_ratio=0.5):
-    """Compress the image by resizing it to a given ratio."""
+    """Compress the image by resizing it to a given ratio with a 5-second delay."""
+
+    # Log and simulate a 5-second delay
+    for i in range(1, 30):  # Loop from 1 to 5 for each second
+        print(f"Compressing image... {i} second(s)")
+        await asyncio.sleep(1)  # Sleep for 1 second asynchronously
+
+    # Proceed with image compression after the delay
     img = Image.open(image)
     original_size = img.size  # Get original size (width, height)
     new_size = (
@@ -42,15 +53,16 @@ async def compress_image(image, compression_ratio=0.5):
     img = img.resize(new_size, Image.Resampling.LANCZOS)
 
     compressed_image = io.BytesIO()
-    img.save(compressed_image, format="JPEG")  
+    img.save(compressed_image, format="JPEG")
     compressed_image.seek(0)
 
     return compressed_image
 
 
+# Upload the image to S3 asynchronously
 async def upload_to_s3(image, filename):
     """Asynchronously upload the image to S3 and return the S3 URL."""
-    session = get_session()  
+    session = get_session()
     unique_filename = f"{uuid.uuid4()}_{filename}"
 
     # Define the folder path inside the bucket
@@ -75,15 +87,10 @@ async def upload_to_s3(image, filename):
     return f"https://{S3_BUCKET}.s3.amazonaws.com/{full_key}"
 
 
+# Asynchronous function to download, compress, and upload images
 async def process_and_upload_image(request_id, idx, image_url):
     """Download, compress, and upload an image asynchronously."""
     try:
-        # Check if the image_url is a list, extract the first item if so
-        if isinstance(image_url, list):
-            image_url = image_url[
-                0
-            ]
-
         # Step 1: Download the image asynchronously
         image = await download_image(image_url)
 

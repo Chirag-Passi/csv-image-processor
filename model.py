@@ -11,17 +11,19 @@ db = client["image_processing_db"]
 requests_collection = db["requests"]
 
 
+# Function to create a record in MongoDB
 def create_request_record(request_id, rows):
-    try:
-        record = {
+    """Insert a new request record into the MongoDB database."""
+    requests_collection.insert_one(
+        {
             "_id": request_id,
-            "status": "Processing",
-            "rows": rows,  # Assuming 'rows' is a list of URLs or other data
+            "status": "Pending",
+            "input_images": [row["input_images"] for row in rows],
+            "output_images": [],
+            "created_at": datetime.utcnow(),
+            "processed_at": None,
         }
-        db.requests.insert_one(record)
-        print(f"Record inserted successfully with request ID: {request_id}")
-    except InvalidDocument as e:
-        print(f"Failed to insert record: {e}")
+    )
 
 
 async def update_request_status(request_id, status, output_images=[]):
@@ -60,6 +62,7 @@ def delete_all_records():
     return deleted_count
 
 
+# Function to update image URLs in the MongoDB
 async def update_image_urls_in_db(request_id, s3_urls):
     """Update the document in MongoDB with the new S3 URLs."""
     requests_collection.update_one(
