@@ -1,35 +1,38 @@
 from utility.validate_utils import parse_csv
-from flask import Flask, request, jsonify
+from flask import request, jsonify
 from image_processing import process_images_task
-from model import create_request_record, delete_all_records, get_request_status
+from model import (
+    create_request_record,
+    delete_all_records,
+    get_request_status,
+    get_request_response,
+)
 import uuid
 import csv
 import asyncio
+import io
 from quart import Quart, request, jsonify
 from quart_cors import cors
 from quart import send_file, jsonify
-from model import get_request_status, download_csv
+from model import get_request_status
+
 
 app = Quart(__name__)
-
-# Enable CORS for the entire app, allowing requests from any origin
 app = cors(app, allow_origin="*")
 
 
 # Upload API to accept the CSV file
 @app.route("/upload", methods=["POST"])
 async def upload():
-    # Get the form data and files asynchronously
-    form = await request.files  # Wait for the form data to be fully available
+    form = await request.files 
 
     if "file" not in form:
         return jsonify({"error": "No file provided"}), 400
 
-    file = form["file"]  # Access the file object after awaiting form data
+    file = form["file"]
     if not file.filename.endswith(".csv"):
         return jsonify({"error": "Invalid file type"}), 400
 
-    # Parse CSV and validate format (assuming parse_csv is your custom function)
     rows, error = parse_csv(file)
     if error:
         return jsonify({"error": error}), 400
@@ -39,14 +42,11 @@ async def upload():
 
     # Create a new request record in MongoDB with 'Pending' status
     create_request_record(request_id, rows)
-
-    # Trigger async image processing in the background using asyncio.create_task
-    asyncio.create_task(process_images_task(request_id, rows))  # Run asynchronously
-
-    # Immediately return the request ID without waiting for processing
+    asyncio.create_task(process_images_task(request_id, rows))  
     return jsonify({"request_id": request_id}), 200
 
 
+# Status API
 @app.route("/status/<request_id>", methods=["GET"])
 def status(request_id):
     request_record = get_request_status(request_id)
@@ -60,18 +60,74 @@ def status(request_id):
     )
 
 
-# @app.route("/webhook", methods=["POST"])
-# def webhook():
-#     data = request.get_json()
-#     request_id = data.get("request_id")
-#     output_images = data.get("output_images")
+# Download CSV File API
+@app.route("/download/<request_id>", methods=["GET"])
+async def download_processed_csv(request_id):
+    """Download the processed CSV file for a given request ID."""
+    try:
+        # Check if the request has completed processing
+        request_status = get_request_status(request_id)
+        if not request_status:
+            return jsonify({"error": "Request not found"}), 404
 
-#     # Update the request status to complete
-#     update_request_status(request_id, "Completed", output_images)
+        # Check if the status is not "Completed"
+        if request_status.get("status") != "Completed":
+            return (
+                jsonify(
+                    {"message": "Processing is still in progress. Try again later."}
+                ),
+                202,
+            )
+        
+        request_record, error = await get_request_response(request_id)
 
-#     return jsonify({"message": "Webhook received successfully"}), 200
+        if error or not request_record:
+            print(f"Error: {error}")  # Log the error for debugging
+            return jsonify({"error": error or "Request not found"}), 404
+
+        print(f"Record found: {request_record}")
+
+        input_data = request_record.get("input", [])
+        output_data = request_record.get("output_images", {})
+
+        csv_output = io.StringIO()
+        csv_writer = csv.writer(csv_output)
+
+        csv_writer.writerow(
+            ["S. No.", "Product Name", "Input Image URLs", "Output Image URLs"]
+        )
+
+        for index, row in enumerate(input_data):
+            serial_number = row.get("S. No.")
+            product_name = row.get("Product Name")
+            input_urls = ", ".join(
+                row.get("Input Image Urls", [])
+            )
+
+            output_idx = str(index)
+            output_urls = output_data.get(output_idx, {}).get("Output Images URLs", [])
+            output_urls_str = ", ".join(output_urls)
+
+            csv_writer.writerow(
+                [serial_number, product_name, input_urls, output_urls_str]
+            )
+
+        csv_output.seek(0)
+        bytes_io = io.BytesIO(csv_output.getvalue().encode())
+
+        return await send_file(
+            bytes_io,
+            attachment_filename=f"{request_id}_processed.csv",
+            mimetype="text/csv",
+            as_attachment=True,
+        )
+
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        return jsonify({"error": "An unexpected error occurred."}), 500
 
 
+# Delete API for the Testing
 @app.route("/delete-all", methods=["DELETE"])
 def delete_all():
     try:
@@ -81,37 +137,6 @@ def delete_all():
             200,
         )
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/download/<request_id>", methods=["GET"])
-async def download_processed_csv(request_id):
-    """Download the processed CSV file for a given request ID."""
-    try:
-        # Call the download_csv function
-        file_or_redirect, error_message = await download_csv(request_id)
-
-        if file_or_redirect:
-            if isinstance(file_or_redirect, dict):  # S3 URL
-                # Return a JSON response with CORS headers for S3 redirection
-                response = jsonify(file_or_redirect)
-                response.headers["Access-Control-Allow-Origin"] = (
-                    "*"  # Manually add CORS headers
-                )
-                return response, 200
-
-            # For local file response, directly return without awaiting the response
-            response = file_or_redirect  # Do not await send_file return
-            response.headers["Access-Control-Allow-Origin"] = (
-                "*"  # Add CORS headers for file download
-            )
-            return response
-
-        # Handle case when file or redirect isn't available
-        return jsonify({"error": error_message}), 404
-
-    except Exception as e:
-        # Log the error if needed, and return 500 for unhandled exceptions
         return jsonify({"error": str(e)}), 500
 
 

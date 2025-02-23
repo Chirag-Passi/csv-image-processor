@@ -84,7 +84,7 @@
       <!-- Request ID Section -->
       <div class="form-group">
         <label for="request-id">Your Request ID:</label>
-        <input type="text" id="request-id" readonly />
+        <input type="text" id="request-id" />
       </div>
 
       <!-- Status Section -->
@@ -175,33 +175,40 @@
           }
         });
 
-        // Download CSV functionality
-  document
-    .getElementById("download-btn")
-    .addEventListener("click", async function () {
-      const requestId = document.getElementById("request-id").value;
-      if (!requestId) {
-        alert("Please upload a CSV first.");
-        return;
-      }
+      // Download CSV functionality
+      // Download CSV functionality
+      document
+        .getElementById("download-btn")
+        .addEventListener("click", async function () {
+          const requestId = document.getElementById("request-id").value;
+          if (!requestId) {
+            alert("Please upload a CSV first.");
+            return;
+          }
 
-      // Make a request to download the CSV
-      const response = fetch(`${backendUrl}/download/${requestId}`, {
-        method: "GET",
-      });
+          // Make a request to download the CSV
+          const response = await fetch(`${backendUrl}/download/${requestId}`, {
+            method: "GET",
+          });
 
-      if (response.status === 200) {
-        const data = await response.json();
+          if (response.status === 200) {
+            // Convert response to blob (binary data)
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
 
-        // Handle redirection if it's a URL from S3
-        if (data.redirect_url) {
-          window.location.href = data.redirect_url;
-        }
-      } else {
-        const data = await response.json();
-        alert("Error: " + data.error);
-      }
-    });
+            // Create a temporary <a> element to trigger the download
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${requestId}_processed.csv`;
+            a.click();
+
+            // Clean up the object URL to free memory
+            window.URL.revokeObjectURL(url);
+          } else {
+            const data = await response.json();
+            alert("Error: " + data.error);
+          }
+        });
     </script>
   </body>
 </html>

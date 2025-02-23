@@ -4,12 +4,15 @@ from bson.json_util import dumps
 from bson import InvalidDocument
 from quart import jsonify, send_file
 import os
-from motor.motor_asyncio import AsyncIOMotorClient
+from quart import send_file
+from dotenv import load_dotenv
+
+load_dotenv()
+
+MONGGO_API_KEY = os.getenv("MONGGO_API_KEY")
 
 # MongoDB configuration
-client = MongoClient(
-    "mongodb+srv://admin:root@pythonapp.vlzqg.mongodb.net/?retryWrites=true&w=majority&appName=pythonApp"
-)
+client = MongoClient(MONGGO_API_KEY)
 db = client["image_processing_db"]
 requests_collection = db["requests"]
 
@@ -28,56 +31,15 @@ def create_request_record(request_id, rows):
     )
 
 
-async def update_request_status(request_id, status, output_images=[]):
-    requests_collection.update_one(
-        {"request_id": request_id},
-        {
-            "$set": {
-                "status": status,
-                "output_images": output_images,
-                "processed_at": datetime.utcnow(),
-            }
-        },
-    )
-
-
-async def download_csv(request_id):
-    """Download the processed CSV for a given request ID."""
-    # Await the URL fetching function
-    output_csv_url = await get_output_csv_url(request_id)
-
-    if not output_csv_url:
-        return None, "CSV not available or processing not complete"
-
-    # If the CSV is stored in S3 or another HTTP URL, return the URL as a dictionary
-    if output_csv_url.startswith("http"):
-        return {"redirect_url": output_csv_url}, None  # Return the S3 URL
-
-    # If stored locally, serve the file using Quart's send_file
-    if os.path.exists(output_csv_url):
-        # Use send_file without awaiting it
-        return (
-            await send_file(
-                output_csv_url,
-                as_attachment=True,
-                download_name=f"{request_id}_processed.csv",  # Correct usage for Quart
-            ),
-            None,
-        )
-
-    return None, "CSV file not found"
-
-
-async def get_output_csv_url(request_id):
-    """Fetch the output CSV file URL from the database."""
-    # Await the database query
-    request_record = await requests_collection.find_one({"_id": request_id})
-
-    if not request_record or "output_csv_url" not in request_record:
-        return None
-
-    # Return the actual URL or local file path
-    return request_record["output_csv_url"]
+async def get_request_response(request_id):
+    """Fetch the request record from MongoDB for the given request ID asynchronously."""
+    try:
+        request_record = requests_collection.find_one({"_id": request_id})
+        if not request_record:
+            return None, "Request not found"
+        return request_record, None
+    except Exception as e:
+        return None, f"Error while fetching request: {str(e)}"
 
 
 def get_request_status(request_id):
@@ -101,21 +63,6 @@ def delete_all_records():
         deleted_count += result.deleted_count
 
     return deleted_count
-
-
-# Function to update image URLs in the MongoDB
-async def update_image_urls_in_db(request_id, s3_urls):
-    """Update the document in MongoDB with the new S3 URLs."""
-    requests_collection.update_one(
-        {"_id": request_id},
-        {
-            "$set": {
-                "output_images": s3_urls,
-                "status": "Completed",
-                "processed_at": datetime.utcnow(),
-            }
-        },
-    )
 
 
 async def update_output_url_in_db(request_id, row_idx, s3_url):

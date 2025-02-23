@@ -1,12 +1,8 @@
 from PIL import Image
 from aiobotocore.session import get_session
-import requests
-import boto3
 import io
 import uuid
-
 import aiohttp
-import aiobotocore
 from model import update_output_url_in_db
 import os
 from dotenv import load_dotenv
@@ -20,7 +16,7 @@ AWS_SECRET_ACCESS_KEY = os.getenv("ENV_AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.getenv("ENV_AWS_REGION")
 
 
-# Download the image asynchronously
+# Download the image asynchronously (Helper)
 async def download_image(image_url):
     """Asynchronously download an image from a URL."""
     async with aiohttp.ClientSession() as session:
@@ -30,16 +26,12 @@ async def download_image(image_url):
             return io.BytesIO(await response.read())  # Return image content as bytes
 
 
-import asyncio
-
-
-# Compress the image asynchronously
+# Compress the image asynchronously (Helper)
 async def compress_image(image, compression_ratio=0.5):
     """Compress the image by resizing it to a given ratio with a 5-second delay."""
 
-    # Proceed with image compression after the delay
     img = Image.open(image)
-    original_size = img.size  # Get original size (width, height)
+    original_size = img.size 
     new_size = (
         int(original_size[0] * compression_ratio),
         int(original_size[1] * compression_ratio),
@@ -54,16 +46,14 @@ async def compress_image(image, compression_ratio=0.5):
     return compressed_image
 
 
-# Upload the image to S3 asynchronously
+# Upload the image to S3 asynchronously (Helper)
 async def upload_to_s3(image, filename):
     """Asynchronously upload the image to S3 and return the S3 URL."""
     session = get_session()
     unique_filename = f"{uuid.uuid4()}_{filename}"
 
-    # Define the folder path inside the bucket
     folder_path = "demo/images/"
 
-    # The full path for the file inside the S3 bucket
     full_key = f"{folder_path}{unique_filename}"
 
     async with session.create_client(
@@ -74,7 +64,7 @@ async def upload_to_s3(image, filename):
     ) as s3_client:
         await s3_client.put_object(
             Bucket=S3_BUCKET,
-            Key=full_key,  # Use the full path
+            Key=full_key, 
             Body=image,
             ContentType="image/jpeg",
         )
@@ -82,40 +72,13 @@ async def upload_to_s3(image, filename):
     return f"https://{S3_BUCKET}.s3.amazonaws.com/{full_key}"
 
 
-# Asynchronous function to download, compress, and upload images
-# async def process_and_upload_image(request_id, idx, image_url):
-#     """Download, compress, and upload an image asynchronously."""
-#     try:
-#         # Step 1: Download the image asynchronously
-#         image = await download_image(image_url)
-
-#         # Step 2: Compress the image
-#         compressed_image = await compress_image(image)
-
-#         # Step 3: Upload the compressed image to S3
-#         filename = f"{request_id}_{idx}.jpg"
-#         s3_url = await upload_to_s3(compressed_image, filename)
-
-#         return s3_url
-#     except Exception as e:
-#         print(f"Error processing image {image_url}: {e}")
-#         return None
-
-
 async def process_and_upload_image(request_id, row_idx, url_idx, image_url):
     """Download, compress, and upload an image asynchronously."""
     try:
-        # Step 1: Download the image asynchronously
         image = await download_image(image_url)
-
-        # Step 2: Compress the image
         compressed_image = await compress_image(image)
-
-        # Step 3: Upload the compressed image to S3
         filename = f"{request_id}_{row_idx}_{url_idx}.jpg"
         s3_url = await upload_to_s3(compressed_image, filename)
-
-        # Step 4: Update the MongoDB document with the processed image URL
         await update_output_url_in_db(request_id, row_idx, s3_url)
 
         return s3_url
