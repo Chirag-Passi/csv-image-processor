@@ -1,28 +1,46 @@
 import asyncio
 from file_storage import process_and_upload_image
-from model import update_image_urls_in_db
+from model import update_image_urls_in_db, update_processing_status_in_db
+
+
+# Asynchronous image processing task
+#
+
+
+# Asynchronous image processing task
+# async def process_images_task(request_id, rows):
+#     """Asynchronous task to process images from the CSV rows."""
+#     tasks = []  # This will store the individual image processing tasks
+
+#     for row in rows:
+#         urls = row["input_image_url"]  # This is now a list of URLs
+
+#         # Iterate through each URL in the list and create processing tasks
+#         for idx, url in enumerate(urls):
+#             # Create a task for each image processing
+#             tasks.append(process_and_upload_image(request_id, idx, url))
+
+#     # Execute all tasks asynchronously and get the output S3 URLs
+#     s3_urls = await asyncio.gather(*tasks)
+
+#     # Update MongoDB with the processed image URLs
+#     await update_image_urls_in_db(request_id, s3_urls)
 
 
 # Asynchronous image processing task
 async def process_images_task(request_id, rows):
     """Asynchronous task to process images from the CSV rows."""
+    tasks = []  # Store tasks for image processing
 
-    image_urls = []
-    for row in rows:
-        urls = row["input_images"]
-        # If urls are in a list, join them into a single string
-        if isinstance(urls, list):
-            urls = ",".join(urls)  # Join URLs with a comma if it's a list
-        image_urls.append(urls)  # Append the string of URLs to the list
+    for row_idx, row in enumerate(rows):
+        urls = row["Input Image Urls"]  # This is now a list of URLs
+        # Process each URL individually and create processing tasks
+        for idx, url in enumerate(urls):
+            # Create a task for each image processing, pass row index and URL index
+            tasks.append(process_and_upload_image(request_id, row_idx, idx, url))
 
-    # Create a list of asyncio tasks for image processing
-    tasks = [
-        process_and_upload_image(request_id, idx, url)
-        for idx, url in enumerate(image_urls)
-    ]
+    # Execute all tasks asynchronously
+    await asyncio.gather(*tasks)
 
-    # Execute all tasks asynchronously and get output S3 URLs
-    s3_urls = await asyncio.gather(*tasks)
-
-    # Update MongoDB with the processed image URLs
-    await update_image_urls_in_db(request_id, s3_urls)
+    # Once processing is complete, update the status in MongoDB
+    await update_processing_status_in_db(request_id)

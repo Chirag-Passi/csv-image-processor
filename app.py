@@ -1,15 +1,19 @@
 from utility.validate_utils import parse_csv
 from flask import Flask, request, jsonify
-from quart import Quart, request, jsonify
 from image_processing import process_images_task
 from model import create_request_record, delete_all_records, get_request_status
 import uuid
 import csv
 import asyncio
+from quart import Quart, request, jsonify
+from quart_cors import cors
+from quart import send_file, jsonify
+from model import get_request_status, download_csv
 
-
-# app = Flask(__name__)
 app = Quart(__name__)
+
+# Enable CORS for the entire app, allowing requests from any origin
+app = cors(app, allow_origin="*")
 
 
 # Upload API to accept the CSV file
@@ -77,6 +81,37 @@ def delete_all():
             200,
         )
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/download/<request_id>", methods=["GET"])
+async def download_processed_csv(request_id):
+    """Download the processed CSV file for a given request ID."""
+    try:
+        # Call the download_csv function
+        file_or_redirect, error_message = await download_csv(request_id)
+
+        if file_or_redirect:
+            if isinstance(file_or_redirect, dict):  # S3 URL
+                # Return a JSON response with CORS headers for S3 redirection
+                response = jsonify(file_or_redirect)
+                response.headers["Access-Control-Allow-Origin"] = (
+                    "*"  # Manually add CORS headers
+                )
+                return response, 200
+
+            # For local file response, directly return without awaiting the response
+            response = file_or_redirect  # Do not await send_file return
+            response.headers["Access-Control-Allow-Origin"] = (
+                "*"  # Add CORS headers for file download
+            )
+            return response
+
+        # Handle case when file or redirect isn't available
+        return jsonify({"error": error_message}), 404
+
+    except Exception as e:
+        # Log the error if needed, and return 500 for unhandled exceptions
         return jsonify({"error": str(e)}), 500
 
 

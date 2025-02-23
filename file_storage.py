@@ -7,7 +7,7 @@ import uuid
 
 import aiohttp
 import aiobotocore
-
+from model import update_output_url_in_db
 import os
 from dotenv import load_dotenv
 
@@ -36,11 +36,6 @@ import asyncio
 # Compress the image asynchronously
 async def compress_image(image, compression_ratio=0.5):
     """Compress the image by resizing it to a given ratio with a 5-second delay."""
-
-    # Log and simulate a 5-second delay
-    for i in range(1, 30):  # Loop from 1 to 5 for each second
-        print(f"Compressing image... {i} second(s)")
-        await asyncio.sleep(1)  # Sleep for 1 second asynchronously
 
     # Proceed with image compression after the delay
     img = Image.open(image)
@@ -88,7 +83,26 @@ async def upload_to_s3(image, filename):
 
 
 # Asynchronous function to download, compress, and upload images
-async def process_and_upload_image(request_id, idx, image_url):
+# async def process_and_upload_image(request_id, idx, image_url):
+#     """Download, compress, and upload an image asynchronously."""
+#     try:
+#         # Step 1: Download the image asynchronously
+#         image = await download_image(image_url)
+
+#         # Step 2: Compress the image
+#         compressed_image = await compress_image(image)
+
+#         # Step 3: Upload the compressed image to S3
+#         filename = f"{request_id}_{idx}.jpg"
+#         s3_url = await upload_to_s3(compressed_image, filename)
+
+#         return s3_url
+#     except Exception as e:
+#         print(f"Error processing image {image_url}: {e}")
+#         return None
+
+
+async def process_and_upload_image(request_id, row_idx, url_idx, image_url):
     """Download, compress, and upload an image asynchronously."""
     try:
         # Step 1: Download the image asynchronously
@@ -98,8 +112,11 @@ async def process_and_upload_image(request_id, idx, image_url):
         compressed_image = await compress_image(image)
 
         # Step 3: Upload the compressed image to S3
-        filename = f"{request_id}_{idx}.jpg"
+        filename = f"{request_id}_{row_idx}_{url_idx}.jpg"
         s3_url = await upload_to_s3(compressed_image, filename)
+
+        # Step 4: Update the MongoDB document with the processed image URL
+        await update_output_url_in_db(request_id, row_idx, s3_url)
 
         return s3_url
     except Exception as e:

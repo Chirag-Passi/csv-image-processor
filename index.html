@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CSV Image Processing</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f4;
+        padding: 20px;
+      }
+      h2 {
+        text-align: center;
+        color: #333;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        font-weight: bold;
+      }
+      input[type="file"],
+      input[type="text"],
+      button {
+        width: 100%;
+        padding: 10px;
+        margin-top: 5px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+        box-sizing: border-box;
+      }
+      button {
+        background-color: #5cb85c;
+        color: white;
+        cursor: pointer;
+        font-weight: bold;
+        border: none;
+      }
+      button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      .status-section {
+        margin-top: 20px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .status-section div {
+        padding: 10px;
+        background-color: #f9f9f9;
+        border-radius: 5px;
+        text-align: center;
+      }
+      #download-btn {
+        display: none;
+        background-color: #007bff;
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>CSV Image Processing System</h2>
+
+      <!-- File Upload Section -->
+      <div class="form-group">
+        <label for="csv-file">Upload CSV File:</label>
+        <input type="file" id="csv-file" accept=".csv" />
+        <button id="upload-btn">Upload CSV</button>
+      </div>
+
+      <!-- Request ID Section -->
+      <div class="form-group">
+        <label for="request-id">Your Request ID:</label>
+        <input type="text" id="request-id" readonly />
+      </div>
+
+      <!-- Status Section -->
+      <div class="status-section">
+        <div>
+          <button id="check-status-btn">Check Status</button>
+        </div>
+        <div>
+          <button id="download-btn">Download CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const backendUrl = "http://127.0.0.1:5000"; // Base URL of the backend
+
+      document
+        .getElementById("upload-btn")
+        .addEventListener("click", async function () {
+          const fileInput = document.getElementById("csv-file");
+          const file = fileInput.files[0];
+
+          if (!file) {
+            alert("Please select a CSV file.");
+            return;
+          }
+
+          // Create FormData to send the file via the API
+          const formData = new FormData();
+          formData.append("file", file);
+
+          // Upload CSV and get the request ID
+          const response = await fetch(`${backendUrl}/upload`, {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await response.json();
+          if (response.ok) {
+            document.getElementById("request-id").value = data.request_id;
+            alert("CSV uploaded successfully! Request ID: " + data.request_id);
+          } else {
+            alert("Error: " + data.error);
+          }
+        });
+
+      document
+        .getElementById("check-status-btn")
+        .addEventListener("click", async function () {
+          const requestId = document.getElementById("request-id").value;
+          if (!requestId) {
+            alert("Please upload a CSV first.");
+            return;
+          }
+
+          // Fetch status of the request
+          const response = await fetch(`${backendUrl}/status/${requestId}`, {
+            method: "GET",
+          });
+
+          // Check the response content type before reading the body
+          const contentType = response.headers.get("content-type");
+
+          if (response.status === 200) {
+            if (contentType && contentType.includes("text/csv")) {
+              // Handle the CSV file download
+              const blob = await response.blob();
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `${requestId}_processed.csv`;
+              a.click();
+
+              document.getElementById("download-btn").style.display = "block";
+            } else {
+              // Handle JSON response for status checking
+              const data = await response.json();
+              alert(`Request Status: ${data.status}`);
+              if (data.status === "Completed") {
+                document.getElementById("download-btn").style.display = "block";
+              } else {
+                document.getElementById("download-btn").style.display = "none";
+              }
+            }
+          } else {
+            const data = await response.json();
+            alert("Error: " + data.error);
+          }
+        });
+
+        // Download CSV functionality
+  document
+    .getElementById("download-btn")
+    .addEventListener("click", async function () {
+      const requestId = document.getElementById("request-id").value;
+      if (!requestId) {
+        alert("Please upload a CSV first.");
+        return;
+      }
+
+      // Make a request to download the CSV
+      const response = fetch(`${backendUrl}/download/${requestId}`, {
+        method: "GET",
+      });
+
+      if (response.status === 200) {
+        const data = await response.json();
+
+        // Handle redirection if it's a URL from S3
+        if (data.redirect_url) {
+          window.location.href = data.redirect_url;
+        }
+      } else {
+        const data = await response.json();
+        alert("Error: " + data.error);
+      }
+    });
+    </script>
+  </body>
+</html>
