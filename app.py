@@ -24,7 +24,7 @@ app = cors(app, allow_origin="*")
 # Upload API to accept the CSV file
 @app.route("/upload", methods=["POST"])
 async def upload():
-    form = await request.files 
+    form = await request.files
 
     if "file" not in form:
         return jsonify({"error": "No file provided"}), 400
@@ -42,7 +42,7 @@ async def upload():
 
     # Create a new request record in MongoDB with 'Pending' status
     create_request_record(request_id, rows)
-    asyncio.create_task(process_images_task(request_id, rows))  
+    asyncio.create_task(process_images_task(request_id, rows))
     return jsonify({"request_id": request_id}), 200
 
 
@@ -78,7 +78,7 @@ async def download_processed_csv(request_id):
                 ),
                 202,
             )
-        
+
         request_record, error = await get_request_response(request_id)
 
         if error or not request_record:
@@ -100,9 +100,7 @@ async def download_processed_csv(request_id):
         for index, row in enumerate(input_data):
             serial_number = row.get("S. No.")
             product_name = row.get("Product Name")
-            input_urls = ", ".join(
-                row.get("Input Image Urls", [])
-            )
+            input_urls = ", ".join(row.get("Input Image Urls", []))
 
             output_idx = str(index)
             output_urls = output_data.get(output_idx, {}).get("Output Images URLs", [])
@@ -141,4 +139,5 @@ def delete_all():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
